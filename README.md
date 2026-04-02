@@ -123,6 +123,12 @@ examples of adding popularly requested plugins.
 > [!NOTE]
 > For more information about a particular plugin check its repository's documentation.
 
+#### IDE Workflow Documentation
+
+For a complete guide to using this customized setup like an IDE, see:
+
+- [doc/IDE_GUIDE.md](doc/IDE_GUIDE.md)
+
 
 ### Getting Started
 

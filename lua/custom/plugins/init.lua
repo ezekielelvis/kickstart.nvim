@@ -57,8 +57,8 @@ return {
 		},
 		keys = {
 			{ '<leader>tt', '<cmd>ToggleTerm direction=float<cr>', desc = 'Terminal (float)' },
-			{ '<leader>th', '<cmd>ToggleTerm size=15 direction=horizontal<cr>', desc = 'Terminal (horizontal)' },
-			{ '<leader>tv', '<cmd>ToggleTerm size=50 direction=vertical<cr>', desc = 'Terminal (vertical)' },
+			{ '<leader>tH', '<cmd>ToggleTerm size=15 direction=horizontal<cr>', desc = 'Terminal (horizontal)' },
+			{ '<leader>tV', '<cmd>ToggleTerm size=50 direction=vertical<cr>', desc = 'Terminal (vertical)' },
 		},
 	},
 
