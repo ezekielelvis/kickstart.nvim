@@ -1,10 +1,7 @@
 -- debug.lua
 --
--- Shows how to use the DAP plugin to debug your code.
---
--- Primarily focused on configuring the debugger for Go, but can
--- be extended to other languages as well. That's why it's called
--- kickstart.nvim and not kitchen-sink.nvim ;)
+-- Adds a language-focused debugger setup for Go, Python, Rust,
+-- and TypeScript/JavaScript.
 
 ---@module 'lazy'
 ---@type LazySpec
@@ -25,6 +22,7 @@ return {
 
     -- Add your own debuggers here
     'leoluz/nvim-dap-go',
+    'mfussenegger/nvim-dap-python',
   },
   keys = {
     -- Basic debugging keymaps, feel free to change to your liking!
@@ -40,21 +38,33 @@ return {
   config = function()
     local dap = require 'dap'
     local dapui = require 'dapui'
+    local mason_nvim_dap = require 'mason-nvim-dap'
 
-    require('mason-nvim-dap').setup {
+    mason_nvim_dap.setup {
       -- Makes a best effort to setup the various debuggers with
       -- reasonable debug configurations
       automatic_installation = true,
 
       -- You can provide additional configuration to the handlers,
       -- see mason-nvim-dap README for more information
-      handlers = {},
+      handlers = {
+        function(config)
+          -- `mason-nvim-dap` ships sane defaults per adapter.
+          mason_nvim_dap.default_setup(config)
+        end,
+      },
 
       -- You'll need to check that you have the required things installed
       -- online, please don't ask me how to install them :)
       ensure_installed = {
-        -- Update this to ensure that you have the debuggers for the langs you want
+        -- Go
         'delve',
+        -- Python
+        'python',
+        -- Rust
+        'codelldb',
+        -- JavaScript/TypeScript
+        'js',
       },
     }
 
@@ -98,6 +108,14 @@ return {
     dap.listeners.before.event_terminated['dapui_config'] = dapui.close
     dap.listeners.before.event_exited['dapui_config'] = dapui.close
 
+    local mason_path = vim.fn.stdpath 'data' .. '/mason'
+
+    -- Install Python-specific config when debugpy is present.
+    local debugpy_python = mason_path .. '/packages/debugpy/venv/bin/python'
+    if vim.uv.fs_stat(debugpy_python) then
+      require('dap-python').setup(debugpy_python)
+    end
+
     -- Install golang specific config
     require('dap-go').setup {
       delve = {
@@ -106,5 +124,66 @@ return {
         detached = vim.fn.has 'win32' == 0,
       },
     }
+
+    -- Configure Rust using codelldb when available.
+    local codelldb = mason_path .. '/bin/codelldb'
+    if vim.fn.executable(codelldb) == 1 then
+      dap.adapters.codelldb = {
+        type = 'server',
+        port = '${port}',
+        executable = {
+          command = codelldb,
+          args = { '--port', '${port}' },
+        },
+      }
+
+      dap.configurations.rust = {
+        {
+          name = 'Debug executable',
+          type = 'codelldb',
+          request = 'launch',
+          program = function()
+            return vim.fn.input('Path to executable: ', vim.fn.getcwd() .. '/target/debug/', 'file')
+          end,
+          cwd = '${workspaceFolder}',
+          stopOnEntry = false,
+        },
+      }
+    end
+
+    -- Configure TS/JS debugging with js-debug-adapter when available.
+    local js_debug_adapter = mason_path .. '/bin/js-debug-adapter'
+    if vim.fn.executable(js_debug_adapter) == 1 then
+      dap.adapters['pwa-node'] = {
+        type = 'server',
+        host = '127.0.0.1',
+        port = '${port}',
+        executable = {
+          command = js_debug_adapter,
+          args = { '${port}' },
+        },
+      }
+
+      local js_like = { 'javascript', 'javascriptreact', 'typescript', 'typescriptreact' }
+      for _, language in ipairs(js_like) do
+        dap.configurations[language] = {
+          {
+            type = 'pwa-node',
+            request = 'launch',
+            name = 'Launch current file',
+            program = '${file}',
+            cwd = '${workspaceFolder}',
+            sourceMaps = true,
+          },
+          {
+            type = 'pwa-node',
+            request = 'attach',
+            name = 'Attach to process',
+            processId = require('dap.utils').pick_process,
+            cwd = '${workspaceFolder}',
+          },
+        }
+      end
+    end
   end,
 }

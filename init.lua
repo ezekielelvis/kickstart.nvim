@@ -600,10 +600,56 @@ require('lazy').setup({
       --  See `:help lsp-config` for information about keys and how to configure
       ---@type table<string, vim.lsp.Config>
       local servers = {
-        -- clangd = {},
-        -- gopls = {},
-        -- pyright = {},
-        -- rust_analyzer = {},
+        bashls = {},
+        clangd = {},
+        gopls = {
+          settings = {
+            gopls = {
+              gofumpt = true,
+              staticcheck = true,
+              analyses = {
+                shadow = true,
+                unusedparams = true,
+              },
+            },
+          },
+        },
+        jsonls = {},
+        marksman = {},
+        pyright = {
+          settings = {
+            python = {
+              analysis = {
+                autoImportCompletions = true,
+                typeCheckingMode = 'basic',
+              },
+            },
+          },
+        },
+        rust_analyzer = {
+          settings = {
+            ['rust-analyzer'] = {
+              cargo = {
+                allFeatures = true,
+              },
+              checkOnSave = {
+                command = 'clippy',
+              },
+            },
+          },
+        },
+        ts_ls = {
+          init_options = {
+            hostInfo = 'neovim',
+          },
+        },
+        yamlls = {
+          settings = {
+            yaml = {
+              keyOrdering = false,
+            },
+          },
+        },
         --
         -- Some languages (like typescript) have entire language plugins that can be useful:
         --    https://github.com/pmizio/typescript-tools.nvim
@@ -653,11 +699,26 @@ require('lazy').setup({
       local ensure_installed = vim.tbl_keys(servers or {})
       vim.list_extend(ensure_installed, {
         -- You can add other tools here that you want Mason to install
+        'markdownlint',
+        'prettier',
+        'prettierd',
+        'eslint_d',
+        'ruff',
+        'black',
+        'isort',
+        'goimports',
+        'gofumpt',
+        'golangci-lint',
+        'shellcheck',
+        'shfmt',
       })
 
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
+      local capabilities = require('blink.cmp').get_lsp_capabilities()
+
       for name, server in pairs(servers) do
+        server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
         vim.lsp.config(name, server)
         vim.lsp.enable(name)
       end
@@ -696,6 +757,20 @@ require('lazy').setup({
       end,
       formatters_by_ft = {
         lua = { 'stylua' },
+        javascript = { 'prettierd', 'prettier', stop_after_first = true },
+        javascriptreact = { 'prettierd', 'prettier', stop_after_first = true },
+        typescript = { 'prettierd', 'prettier', stop_after_first = true },
+        typescriptreact = { 'prettierd', 'prettier', stop_after_first = true },
+        json = { 'prettierd', 'prettier', stop_after_first = true },
+        jsonc = { 'prettierd', 'prettier', stop_after_first = true },
+        yaml = { 'prettierd', 'prettier', stop_after_first = true },
+        markdown = { 'prettierd', 'prettier', stop_after_first = true },
+        python = { 'ruff_organize_imports', 'ruff_format' },
+        go = { 'goimports', 'gofumpt', 'gofmt' },
+        rust = { 'rustfmt' },
+        bash = { 'shfmt' },
+        sh = { 'shfmt' },
+        zsh = { 'shfmt' },
         -- Conform can also run multiple formatters sequentially
         -- python = { "isort", "black" },
         --
@@ -874,9 +949,86 @@ require('lazy').setup({
     branch = 'main',
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter-intro`
     config = function()
-      -- ensure basic parser are installed
-      local parsers = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' }
-      require('nvim-treesitter').install(parsers)
+      local nvim_treesitter = require 'nvim-treesitter'
+      local parsers = {
+        'bash',
+        'c',
+        'diff',
+        'go',
+        'gomod',
+        'gosum',
+        'gowork',
+        'html',
+        'javascript',
+        'jsdoc',
+        'json',
+        'lua',
+        'luadoc',
+        'markdown',
+        'markdown_inline',
+        'python',
+        'query',
+        'regex',
+        'rust',
+        'toml',
+        'tsx',
+        'typescript',
+        'vim',
+        'vimdoc',
+        'yaml',
+      }
+
+      -- Prefer `git` instead of curl archives for parser downloads.
+      -- This avoids the common curl host-resolution failures on unstable DNS setups.
+      local ok_install, ts_install = pcall(require, 'nvim-treesitter.install')
+      if ok_install then ts_install.prefer_git = true end
+
+      local function missing_parsers()
+        local installed_parsers = nvim_treesitter.get_installed 'parsers'
+        local installed_lookup = {}
+
+        for _, parser in ipairs(installed_parsers) do
+          installed_lookup[parser] = true
+        end
+
+        local missing = {}
+        for _, parser in ipairs(parsers) do
+          if not installed_lookup[parser] then
+            table.insert(missing, parser)
+          end
+        end
+
+        return missing
+      end
+
+      local function can_reach_github()
+        if vim.fn.executable 'curl' ~= 1 then
+          return true
+        end
+
+        local result = vim.system({ 'curl', '-Is', '--max-time', '4', 'https://github.com' }, { text = true }):wait()
+        return result.code == 0
+      end
+
+      local function install_base_parsers()
+        local missing = missing_parsers()
+        if vim.tbl_isempty(missing) then return end
+
+        if not can_reach_github() then
+          vim.schedule(function()
+            vim.notify('[treesitter] github.com is unreachable. Parser install skipped. Reconnect and run :TSInstallBase', vim.log.levels.WARN)
+          end)
+          return
+        end
+
+        nvim_treesitter.install(missing)
+      end
+
+      vim.api.nvim_create_user_command('TSInstallBase', install_base_parsers, {
+        desc = 'Install baseline treesitter parsers for this config',
+      })
+
+      install_base_parsers()
 
       ---@param buf integer
       ---@param language string
@@ -895,25 +1047,24 @@ require('lazy').setup({
         vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
       end
 
-      local available_parsers = require('nvim-treesitter').get_available()
+      local parser_hint_shown = {}
       vim.api.nvim_create_autocmd('FileType', {
+        group = vim.api.nvim_create_augroup('kickstart-treesitter-filetype', { clear = true }),
         callback = function(args)
           local buf, filetype = args.buf, args.match
 
           local language = vim.treesitter.language.get_lang(filetype)
           if not language then return end
 
-          local installed_parsers = require('nvim-treesitter').get_installed 'parsers'
+          if treesitter_try_attach(buf, language) then
+            return
+          end
 
-          if vim.tbl_contains(installed_parsers, language) then
-            -- enable the parser if it is installed
-            treesitter_try_attach(buf, language)
-          elseif vim.tbl_contains(available_parsers, language) then
-            -- if a parser is available in `nvim-treesitter` auto install it, and enable it after the installation is done
-            require('nvim-treesitter').install(language):await(function() treesitter_try_attach(buf, language) end)
-          else
-            -- try to enable treesitter features in case the parser exists but is not available from `nvim-treesitter`
-            treesitter_try_attach(buf, language)
+          if vim.tbl_contains(parsers, language) and not parser_hint_shown[language] then
+            parser_hint_shown[language] = true
+            vim.schedule(function()
+              vim.notify(string.format('[treesitter] Parser for "%s" is not installed. Run :TSInstallBase', language), vim.log.levels.INFO)
+            end)
           end
         end,
       })
@@ -929,18 +1080,18 @@ require('lazy').setup({
   --  Here are some example plugins that I've included in the Kickstart repository.
   --  Uncomment any of the lines below to enable them (you will need to restart nvim).
   --
-  -- require 'kickstart.plugins.debug',
-  -- require 'kickstart.plugins.indent_line',
-  -- require 'kickstart.plugins.lint',
-  -- require 'kickstart.plugins.autopairs',
-  -- require 'kickstart.plugins.neo-tree',
-  -- require 'kickstart.plugins.gitsigns', -- adds gitsigns recommended keymaps
+  require 'kickstart.plugins.debug',
+  require 'kickstart.plugins.indent_line',
+  require 'kickstart.plugins.lint',
+  require 'kickstart.plugins.autopairs',
+  require 'kickstart.plugins.neo-tree',
+  require 'kickstart.plugins.gitsigns', -- adds gitsigns recommended keymaps
 
   -- NOTE: The import below can automatically add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
   --    This is the easiest way to modularize your config.
   --
   --  Uncomment the following line and add your plugins to `lua/custom/plugins/*.lua` to get going.
-  -- { import = 'custom.plugins' },
+  { import = 'custom.plugins' },
   --
   -- For additional information with loading, sourcing and examples see `:help lazy.nvim-🔌-plugin-spec`
   -- Or use telescope!

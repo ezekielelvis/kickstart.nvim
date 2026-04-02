@@ -7,9 +7,47 @@ return {
   event = { 'BufReadPre', 'BufNewFile' },
   config = function()
     local lint = require 'lint'
-    lint.linters_by_ft = {
-      markdown = { 'markdownlint' }, -- Make sure to install `markdownlint` via mason / npm
+    local function has(bin)
+      return vim.fn.executable(bin) == 1
+    end
+
+    local linters_by_ft = {
+      markdown = { 'markdownlint' },
     }
+
+    if has 'eslint_d' then
+      linters_by_ft.javascript = { 'eslint_d' }
+      linters_by_ft.javascriptreact = { 'eslint_d' }
+      linters_by_ft.typescript = { 'eslint_d' }
+      linters_by_ft.typescriptreact = { 'eslint_d' }
+    elseif has 'eslint' then
+      linters_by_ft.javascript = { 'eslint' }
+      linters_by_ft.javascriptreact = { 'eslint' }
+      linters_by_ft.typescript = { 'eslint' }
+      linters_by_ft.typescriptreact = { 'eslint' }
+    end
+
+    if has 'ruff' then
+      linters_by_ft.python = { 'ruff' }
+    elseif has 'pylint' then
+      linters_by_ft.python = { 'pylint' }
+    end
+
+    if has 'golangci-lint' then
+      linters_by_ft.go = { 'golangcilint' }
+    end
+
+    if has 'cargo' then
+      linters_by_ft.rust = { 'clippy' }
+    end
+
+    if has 'shellcheck' then
+      linters_by_ft.sh = { 'shellcheck' }
+      linters_by_ft.bash = { 'shellcheck' }
+      linters_by_ft.zsh = { 'shellcheck' }
+    end
+
+    lint.linters_by_ft = linters_by_ft
 
     -- To allow other plugins to add linters to require('lint').linters_by_ft,
     -- instead set linters_by_ft like this:
@@ -55,5 +93,7 @@ return {
         if vim.bo.modifiable then lint.try_lint() end
       end,
     })
+
+    vim.keymap.set('n', '<leader>ll', function() lint.try_lint() end, { desc = '[L]int current buffer' })
   end,
 }
